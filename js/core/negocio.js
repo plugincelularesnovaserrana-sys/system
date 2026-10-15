@@ -163,8 +163,8 @@
       v.pagamentos.forEach(pg => {
         const f = NEG.forma(pg.forma_id);
         if (f.tipo === 'Aparelho na troca') {
-          NEG.lancar({ tipo: 'R', titulo: `Venda #${v.id} - aparelho na troca`, pessoa_id: v.cliente_id, valor: pg.valor, vencimento: v.data.slice(0, 10), categoria_id: catVenda, origem: 'Venda', origem_id: v.id, forma_id: pg.forma_id,
-            pagamentos: [{ forma_id: pg.forma_id, valor: pg.valor, data: v.data.slice(0, 10), taxa: 0, liquido: pg.valor }] });
+          NEG.lancar({ tipo: 'R', titulo: `Venda #${v.id} - aparelho na troca`, pessoa_id: v.cliente_id, valor: pg.valor, vencimento: UI.dia(v.data), categoria_id: catVenda, origem: 'Venda', origem_id: v.id, forma_id: pg.forma_id,
+            pagamentos: [{ forma_id: pg.forma_id, valor: pg.valor, data: UI.dia(v.data), taxa: 0, liquido: pg.valor }] });
           return;
         }
         if (f.tipo === 'Crediário' || f.tipo === 'Boleto' || pg.a_prazo) {
@@ -177,8 +177,8 @@
           }
           return;
         }
-        const rec = NEG.lancar({ tipo: 'R', titulo: `Venda #${v.id} - ${cliente.nome || 'Consumidor'}`, pessoa_id: v.cliente_id, valor: pg.valor, vencimento: v.data.slice(0, 10), categoria_id: catVenda, origem: 'Venda', origem_id: v.id, forma_id: pg.forma_id, parcela: pg.parcelas > 1 ? pg.parcelas + 'x' : '' });
-        try { NEG.baixar(rec.id, { forma_id: pg.forma_id, valor: pg.valor, data: v.data.slice(0, 10), taxa: pg.taxa || 0 }); }
+        const rec = NEG.lancar({ tipo: 'R', titulo: `Venda #${v.id} - ${cliente.nome || 'Consumidor'}`, pessoa_id: v.cliente_id, valor: pg.valor, vencimento: UI.dia(v.data), categoria_id: catVenda, origem: 'Venda', origem_id: v.id, forma_id: pg.forma_id, parcela: pg.parcelas > 1 ? pg.parcelas + 'x' : '' });
+        try { NEG.baixar(rec.id, { forma_id: pg.forma_id, valor: pg.valor, data: UI.dia(v.data), taxa: pg.taxa || 0 }); }
         catch (e) { DB.update('financeiro', rec.id, { situacao: 'Cancelado' }); throw e; }
       });
       // garantias
@@ -191,13 +191,51 @@
       v.itens.filter(i => i.seguro_valor > 0).forEach(i => DB.insert('seguros', { venda_id: v.id, item: i.descricao, cliente_id: v.cliente_id, valor: i.seguro_valor, comissao: r2(i.seguro_valor * (Number(cfg.seguro_comissao_pct) || 0) / 100), status: 'Ativo', confirmacao: 'Pendente' }));
       return DB.update('vendas', v.id, patch);
     },
+    /* categoria de sistema: encontra ou cria (para bases antigas) */
+    categoria(sistema, nome, tipo, dre) {
+      let c = DB.list('categoriasfin').find(x => x.sistema === sistema);
+      if (!c) c = DB.insert('categoriasfin', { nome, tipo, dre, sistema }, { silent: true });
+      return c.id;
+    },
+    /* desfaz todos os pagamentos de um lançamento: caixa, banco e crédito do cliente voltam ao que eram */
+    estornarPagamentos(f, rotulo = 'Estorno') {
+      (f.pagamentos || []).forEach(p => {
+        const forma = NEG.forma(p.forma_id);
+        if (forma.banco_id) NEG.movBanco(forma.banco_id, f.tipo === 'R' ? -(p.liquido != null ? p.liquido : p.valor) : p.valor, rotulo + ': ' + f.titulo);
+        if (p.caixa_id) NEG.caixaMov(f.tipo === 'R' ? 'Saída' : 'Entrada', p.valor, p.forma_id, rotulo + ': ' + f.titulo, 'Financeiro', f.id);
+        if (forma.tipo === 'Crédito do cliente' && f.tipo === 'R' && f.pessoa_id) NEG.movCredito(f.pessoa_id, p.valor, 'Estorno de recebimento', 'financeiro', f.id);
+      });
+      const atual = DB.get('financeiro', f.id);
+      return DB.update('financeiro', f.id, { pagamentos: [], pago: 0, situacao: NEG.situacaoFin(Object.assign({}, atual, { pagamentos: [], pago: 0, situacao: atual.situacao === 'Cancelado' ? 'Cancelado' : 'Em aberto' })) });
+    },
+    naoFinanceira(forma_id) { const t = NEG.forma(forma_id).tipo; return t === 'Crédito do cliente' || t === 'Aparelho na troca'; },
+    /* Desfaz os recebimentos de uma venda/OS cancelada.
+       O que entrou em dinheiro/PIX/cartão vira um ESTORNO pago hoje (o recebimento original continua na data em que aconteceu);
+       crédito do cliente volta como crédito; parcelas ainda não recebidas são canceladas. */
+    estornarRecebimentos(origem, origem_id, rotulo, jaDevolvido = 0) {
+      let abater = r2(jaDevolvido);
+      const cat = NEG.categoria('devolucao', 'Devoluções e estornos', 'Despesa', 'Devoluções');
+      DB.list('financeiro').filter(f => f.tipo === 'R' && f.origem === origem && f.origem_id === origem_id && f.situacao !== 'Cancelado').forEach(f => {
+        const pags = f.pagamentos || [];
+        if (!pags.length) { DB.update('financeiro', f.id, { situacao: 'Cancelado' }); return; }
+        pags.forEach(p => {
+          const t = NEG.forma(p.forma_id).tipo;
+          if (t === 'Crédito do cliente') { const u = Math.min(abater, p.valor); abater = r2(abater - u); if (p.valor - u > 0.004) NEG.movCredito(f.pessoa_id, r2(p.valor - u), 'Estorno de ' + rotulo, origem.toLowerCase(), origem_id); return; }
+          if (t === 'Aparelho na troca') return;
+          const usado = Math.min(abater, p.valor); abater = r2(abater - usado);
+          const valor = r2(p.valor - usado);
+          if (valor <= 0.004) return;
+          const d = NEG.lancar({ tipo: 'D', titulo: `Estorno ${rotulo} — ${f.titulo}`, pessoa_id: f.pessoa_id, valor, vencimento: UI.today(), categoria_id: cat, origem: 'Devolução', origem_id, estorno_de: f.id });
+          NEG.baixar(d.id, { forma_id: p.forma_id, valor, data: UI.today(), taxa: 0 });
+        });
+        const resto = NEG.aPagar(f);
+        if (resto > 0.004) DB.update('financeiro', f.id, { desconto: r2((f.desconto || 0) + resto), situacao: 'Pago', obs: ((f.obs || '') + ' Saldo cancelado (' + rotulo + ').').trim() });
+      });
+    },
     cancelarVenda(v, motivo) {
       if (v.status === 'Concluída') {
-        v.itens.forEach(it => NEG.movEstoque(it.produto_id, it.qtd, 'Entrada', 'Cancelamento de venda', v.id));
-        DB.list('financeiro').filter(f => f.origem === 'Venda' && f.origem_id === v.id).forEach(f => {
-          (f.pagamentos || []).forEach(p => { if (NEG.forma(p.forma_id).tipo === 'Crédito do cliente') NEG.movCredito(f.pessoa_id, p.valor, 'Estorno de venda cancelada', 'venda', v.id); else if (p.caixa_id && NEG.caixaAberto()) NEG.caixaMov('Saída', p.valor, p.forma_id, 'Estorno venda #' + v.id, 'Venda', v.id); });
-          DB.update('financeiro', f.id, { situacao: 'Cancelado' });
-        });
+        v.itens.forEach(it => { const q = it.qtd - (it.qtd_devolvida || 0); if (q > 0) NEG.movEstoque(it.produto_id, q, 'Entrada', 'Cancelamento de venda', v.id); });
+        NEG.estornarRecebimentos('Venda', v.id, 'venda #' + v.id + ' cancelada', v.devolvido_valor || 0);
       }
       return DB.update('vendas', v.id, { status: 'Cancelada', cancelada_em: new Date().toISOString(), motivo_cancelamento: motivo || '' });
     },
@@ -246,7 +284,7 @@
       }
       if (nova.finalidade === 'Cancelada' && o.financeiro_gerado) {
         (o.pecas || []).forEach(pc => pc.produto_id && NEG.movEstoque(pc.produto_id, pc.qtd || 1, 'Entrada', 'OS cancelada', o.id));
-        DB.list('financeiro').filter(f => f.origem === 'OS' && f.origem_id === o.id).forEach(f => DB.update('financeiro', f.id, { situacao: 'Cancelado' }));
+        NEG.estornarRecebimentos('OS', o.id, 'OS #' + o.id + ' cancelada');
         patch.financeiro_gerado = false;
       }
       DB.update('os', o.id, patch);

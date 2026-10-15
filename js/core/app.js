@@ -31,7 +31,7 @@
         ['Modelos de checklist', '#/c/checklists'], ['Tags', '#/c/tagsos'], ['Termos de entrada/saída', '#/c/termos']] }
     ] },
     { id: 'financeiro', label: 'Financeiro', icon: 'wallet', perm: 'financeiro', items: [
-      ['Receitas', '#/c/receitas'], ['Despesas', '#/c/despesas'], ['Caixas', '#/c/caixas'], ['Calendário', '#/fin/calendario'],
+      ['Receitas', '#/c/receitas'], ['Despesas', '#/c/despesas'], ['Caixas', '#/c/caixas'], ['DRE regime de caixa', '#/rel/drecaixa'], ['Calendário', '#/fin/calendario'],
       { sub: 'Bancos', icon: 'landmark', items: [['Saldo bancário', '#/c/bancos'], ['Conciliação bancária (OFX)', '#/c/conciliacoes'], ['Movimentações financeiras', '#/rel/movfin']] },
       { sub: 'Lançamentos fixos', icon: 'repeat-2', items: [['Despesas e receitas fixas', '#/c/fixos']] },
       { sub: 'Configurações financeiras', icon: 'settings-2', items: [['Parâmetros', '#/config/financeiro'], ['Formas de pagamento', '#/c/formaspag'], ['Categorias', '#/c/categoriasfin'],
@@ -90,6 +90,7 @@
     start() {
       DB.load();
       if (DB.isEmpty()) { SEED.run(); DB.markSeeded(); }
+      (window.MIGRAR || []).forEach(fn => { try { fn(); } catch (e) { console.error('migração', e); } });
       document.addEventListener('click', () => document.querySelectorAll('.dropdown').forEach(d => { if (!d.closest('.open-keep')) d.hidden = true; }));
       window.addEventListener('hashchange', App.render);
       App.render();

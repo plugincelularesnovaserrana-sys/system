@@ -5,18 +5,18 @@
   const r2 = UI.round2;
   const nome = (col, id) => (DB.get(col, id) || {}).nome || '';
   const REL = window.REL = { list: [], st: {} };
-  const add = (id, grupo, titulo, render, extra = {}) => { REL.list.push(Object.assign({ id, grupo, titulo, render }, extra)); App.route('/rel/' + id, (el, p, qs) => REL.abrir(id, el, qs)); };
+  const add = REL.add = (id, grupo, titulo, render, extra = {}) => { REL.list.push(Object.assign({ id, grupo, titulo, render }, extra)); App.route('/rel/' + id, (el, p, qs) => REL.abrir(id, el, qs)); };
   const GRUPOS = ['Clientes', 'Financeiro', 'Vendas e estoque', 'Ordem de serviço', 'Vendedores', 'Gestão', 'Fiscal', 'Legado'];
 
   const GICON = { Clientes: 'users', Financeiro: 'wallet', 'Vendas e estoque': 'package', 'Ordem de serviço': 'wrench', Vendedores: 'user-check', Gestão: 'briefcase', Fiscal: 'receipt-text', Legado: 'archive' };
-  window.REPORT_MENU = () => [['Visão geral', '#/relatorios'], ['DRE gerencial', '#/rel/dre'], ['Produtos vendidos', '#/rel/itensperiodo'], ['Comissão de vendedores', '#/rel/comissao'],
+  window.REPORT_MENU = () => [['Visão geral', '#/relatorios'], ['DRE regime de caixa', '#/rel/drecaixa'], ['DRE gerencial (competência)', '#/rel/dre'], ['Produtos vendidos', '#/rel/itensperiodo'], ['Comissão de vendedores', '#/rel/comissao'],
     ...GRUPOS.map(g => ({ sub: g, icon: GICON[g], items: REL.list.filter(r => r.grupo === g).map(r => [r.titulo, '#/rel/' + r.id]) }))];
   App.route('/relatorios', el => {
     el.innerHTML = App.pageHead('Relatórios', 'Relatórios') + GRUPOS.map(g => `<section class="card"><h2>${g}</h2><div class="tiles">${REL.list.filter(r => r.grupo === g).map(r => `<a class="tile" href="#/rel/${r.id}"><h3>${esc(r.titulo)}</h3>${r.desc ? `<p>${esc(r.desc)}</p>` : ''}</a>`).join('')}</div></section>`).join('');
   });
 
   /* ---------- dados de apoio ---------- */
-  const inP = (d, st) => { const x = String(d || '').slice(0, 10); return (!st.de || x >= st.de) && (!st.ate || x <= st.ate); };
+  const inP = (d, st) => { const x = UI.dia(d); return (!st.de || x >= st.de) && (!st.ate || x <= st.ate); };
   REL.vendas = (st, all) => DB.list('vendas', { allUnits: all }).filter(v => v.status === 'Concluída' && inP(v.data, st));
   REL.itens = (st, all) => {
     const out = [];
@@ -42,7 +42,7 @@
     DB.list('financeiro').filter(f => f.situacao !== 'Cancelado' && (!tipo || f.tipo === tipo)).forEach(f => (f.pagamentos || []).forEach(p => { if (inP(p.data, st)) out.push({ f, p }); }));
     return out;
   };
-  const periodoKey = (d, per) => per === 'Diário' ? String(d).slice(0, 10) : per === 'Mensal' ? String(d).slice(0, 7) : per === 'Anual' ? String(d).slice(0, 4) : '';
+  const periodoKey = (d, per) => per === 'Diário' ? UI.dia(d) : per === 'Mensal' ? UI.dia(d).slice(0, 7) : per === 'Anual' ? UI.dia(d).slice(0, 4) : '';
   const periodoLabel = (k, per) => per === 'Diário' ? UI.date(k) : per === 'Mensal' ? UI.monthLabel(k) : k;
 
   /* ---------- tabela agrupada genérica ---------- */
@@ -173,11 +173,11 @@
     const cmv = vs.reduce((s, v) => s + (v.total_custo || 0), 0), cmvOS = os.reduce((s, o) => s + NEG.totaisOS(o).custo, 0);
     const taxas = vs.reduce((s, v) => s + (v.total_taxas || 0), 0) + os.reduce((s, o) => s + NEG.totaisOS(o).taxas, 0);
     const grupos = {};
-    lanc.filter(f => f.tipo === 'D' && inP(data(f), st)).forEach(f => { const c = DB.get('categoriasfin', f.categoria_id) || {}; if (c.dre === 'Não considerar') return; const g = c.dre || 'Despesa operacional'; grupos[g] = grupos[g] || {}; grupos[g][c.nome || 'Sem categoria'] = (grupos[g][c.nome || 'Sem categoria'] || 0) + (porComp ? f.total || f.valor : (f.pagamentos || []).filter(p => inP(p.data, st)).reduce((s, p) => s + p.valor, 0)); });
-    const outrasRec = lanc.filter(f => f.tipo === 'R' && !['Venda', 'OS'].includes(f.origem) && inP(data(f), st)).reduce((s, f) => s + (f.total || f.valor || 0), 0);
+    lanc.filter(f => f.tipo === 'D' && inP(data(f), st)).forEach(f => { const c = DB.get('categoriasfin', f.categoria_id) || {}; if (['Não considerar', 'Devoluções'].includes(c.dre)) return; const g = c.dre || 'Despesa operacional'; grupos[g] = grupos[g] || {}; grupos[g][c.nome || 'Sem categoria'] = (grupos[g][c.nome || 'Sem categoria'] || 0) + (porComp ? f.total || f.valor : (f.pagamentos || []).filter(p => inP(p.data, st)).reduce((s, p) => s + p.valor, 0)); });
+    const outrasRec = lanc.filter(f => f.tipo === 'R' && !['Venda', 'OS', 'Crédito'].includes(f.origem) && inP(data(f), st)).reduce((s, f) => s + (f.total || f.valor || 0), 0);
     return { recVendas, recOS, outrasRec, cmv, cmvOS, taxas, grupos, nVendas: vs.length, nOS: os.length };
   };
-  add('dre', 'Financeiro', 'DRE gerencial', (el, st) => {
+  add('dre', 'Financeiro', 'DRE gerencial (competência)', (el, st) => {
     const comp = st.comp === 'caixa' ? false : true;
     const d = dreLinhas(st, comp);
     const receita = d.recVendas + d.recOS + d.outrasRec;
@@ -195,10 +195,10 @@
   }, { filtros: st => sel('comp', 'Despesas por', [{ v: 'caixa', l: 'Despesas por data de pagamento' }], st, 'Despesas por competência'), desc: 'Demonstrativo de resultado: receitas, custos, taxas e despesas do período.' });
   const mensal = (st, comOS, all, porLoja) => {
     const m = {};
-    const key = d => porLoja ? 'x' : String(d).slice(0, 7);
+    const key = d => porLoja ? 'x' : UI.dia(d).slice(0, 7);
     REL.vendas(st, all).forEach(v => { const k = porLoja ? v.unidade_id : key(v.data); const x = m[k] = m[k] || { k, fat: 0, fatv: 0, fato: 0, cmv: 0, lucro: 0, lucv: 0, luco: 0, nv: 0, no: 0, taxas: 0, desp: 0 }; x.fat += v.total; x.fatv += v.total; x.cmv += v.total_custo || 0; x.lucro += v.lucro || 0; x.lucv += v.lucro || 0; x.nv++; x.taxas += v.total_taxas || 0; });
     if (comOS) REL.osFin(st, all).forEach(o => { const t = NEG.totaisOS(o); const k = porLoja ? o.unidade_id : key(o.data_finalizacao); const x = m[k] = m[k] || { k, fat: 0, fatv: 0, fato: 0, cmv: 0, lucro: 0, lucv: 0, luco: 0, nv: 0, no: 0, taxas: 0, desp: 0 }; x.fat += t.total; x.fato += t.total; x.cmv += t.custo; x.lucro += t.lucro; x.luco += t.lucro; x.no++; x.taxas += t.taxas; });
-    DB.list('financeiro', { allUnits: all }).filter(f => f.tipo === 'D' && f.situacao !== 'Cancelado' && f.considerar !== false && inP(f.competencia || f.vencimento, st)).forEach(f => { const c = DB.get('categoriasfin', f.categoria_id) || {}; if (c.dre === 'Não considerar') return; const k = porLoja ? f.unidade_id : key(f.competencia || f.vencimento); const x = m[k] = m[k] || { k, fat: 0, fatv: 0, fato: 0, cmv: 0, lucro: 0, lucv: 0, luco: 0, nv: 0, no: 0, taxas: 0, desp: 0 }; x.desp += f.total || f.valor || 0; });
+    DB.list('financeiro', { allUnits: all }).filter(f => f.tipo === 'D' && f.situacao !== 'Cancelado' && f.considerar !== false && inP(f.competencia || f.vencimento, st)).forEach(f => { const c = DB.get('categoriasfin', f.categoria_id) || {}; if (['Não considerar', 'Devoluções'].includes(c.dre)) return; const k = porLoja ? f.unidade_id : key(f.competencia || f.vencimento); const x = m[k] = m[k] || { k, fat: 0, fatv: 0, fato: 0, cmv: 0, lucro: 0, lucv: 0, luco: 0, nv: 0, no: 0, taxas: 0, desp: 0 }; x.desp += f.total || f.valor || 0; });
     return Object.values(m).sort((a, b) => String(a.k).localeCompare(String(b.k))).map(x => Object.assign(x, { liq: r2(x.lucro - x.desp), pliq: x.fat ? r2((x.lucro - x.desp) / x.fat * 100) : 0, ticket: (x.nv + x.no) ? r2(x.fat / (x.nv + x.no)) : 0, lucmed: (x.nv + x.no) ? r2(x.lucro / (x.nv + x.no)) : 0 }));
   };
   const finCols = (comOS, porLoja) => [{ label: porLoja ? 'Loja' : 'Mês', raw: r => r.k, fmt: k => porLoja ? nome('unidades', Number(k)) : UI.monthLabel(k) }, { label: 'Faturamento total', k: 'fat', fmt: UI.money, r: true, sum: true },
@@ -271,7 +271,7 @@
   add('historicovendas', 'Vendas e estoque', 'Histórico de vendas (resumo)', (el, st) => {
     const vs = REL.vendas(st); const it = REL.itens(st); const fat = vs.reduce((s, v) => s + v.total, 0); const luc = vs.reduce((s, v) => s + (v.lucro || 0), 0); const sc = App.can('ver_custo');
     const hora = Array.from({ length: 24 }, (_, h) => ({ l: h + 'h', v: vs.filter(v => new Date(v.data).getHours() === h).length })).filter((x, i) => i >= 8 && i <= 20);
-    const dia = {}; vs.forEach(v => { const k = v.data.slice(0, 10); dia[k] = (dia[k] || 0) + v.total; });
+    const dia = {}; vs.forEach(v => { const k = UI.dia(v.data); dia[k] = (dia[k] || 0) + v.total; });
     el.innerHTML = kpis([{ l: 'Faturamento', v: UI.money(fat), c: 'accent' }, { l: 'Qtd. vendas', v: UI.int(vs.length) }, { l: 'Produtos vendidos', v: UI.int(it.reduce((s, i) => s + i.qtd, 0)) }, { l: 'Ticket médio', v: UI.money(vs.length ? fat / vs.length : 0) },
       ...(sc ? [{ l: 'Lucro total', v: UI.money(luc), c: 'ok' }, { l: 'Margem média', v: UI.pct(fat ? luc / fat * 100 : 0) }, { l: 'Custo total', v: UI.money(vs.reduce((s, v) => s + (v.total_custo || 0), 0)) }] : []), { l: 'Desconto total', v: UI.money(vs.reduce((s, v) => s + (v.desconto_total || 0), 0)) }]) +
       `<div class="cols-2"><section class="card"><h2>Vendas por hora do dia</h2>${UI.barChart(hora, { fmt: UI.int })}</section><section class="card"><h2>Faturamento por dia</h2>${UI.barChart(Object.keys(dia).sort().map(k => ({ l: k.slice(8), v: dia[k] })))}</section></div>`;
@@ -378,7 +378,7 @@
     const it = REL.itens(s);
     const g = (k, mk) => { const m = {}; it.forEach(i => { const x = m[i[k]] = m[i[k]] || { l: i[k], q: 0, v: 0, l2: 0 }; x.q += i.qtd; x.v += i.valor; x.l2 += i.lucro; }); return Object.values(m); };
     const prods = g('modelo'); const cli = g('cliente');
-    const mes = Array.from({ length: 12 }, (_, i) => { const k = ano + '-' + String(i + 1).padStart(2, '0'); return { l: UI.monthLabel(k).slice(0, 3), v: it.filter(x => x.data.slice(0, 7) === k).reduce((a, x) => a + x.valor, 0) }; });
+    const mes = Array.from({ length: 12 }, (_, i) => { const k = ano + '-' + String(i + 1).padStart(2, '0'); return { l: UI.monthLabel(k).slice(0, 3), v: it.filter(x => UI.dia(x.data).slice(0, 7) === k).reduce((a, x) => a + x.valor, 0) }; });
     el.innerHTML = kpis([{ l: 'Faturamento do ano', v: UI.money(it.reduce((a, i) => a + i.valor, 0)), c: 'accent' }, { l: 'Vendas', v: UI.int(new Set(it.map(i => i.venda.id)).size) }, { l: 'Produtos vendidos', v: UI.int(it.reduce((a, i) => a + i.qtd, 0)) }]) +
       `<section class="card"><h2>Faturamento por mês em ${ano}</h2>${UI.barChart(mes)}</section><div class="cols-2"><section class="card"><h2>Produtos mais vendidos</h2>${UI.hbars(prods.sort((a, b) => b.q - a.q).slice(0, 10).map(x => ({ l: x.l, v: x.q })), { fmt: UI.int })}</section>
       ${App.can('ver_custo') ? `<section class="card"><h2>Produtos com maior margem</h2>${UI.hbars(prods.filter(x => x.v > 0).sort((a, b) => b.l2 / b.v - a.l2 / a.v).slice(0, 10).map(x => ({ l: x.l, v: x.l2 / x.v * 100 })), { fmt: UI.pct })}</section>` : ''}
@@ -409,7 +409,7 @@
   add('leg_estoquemulti', 'Legado', 'Estoque — todas as lojas', REL.agrupado({ fonte: () => estoqueRows(true), metricas: ME }), { semPeriodo: true, dims: ['loja', 'modelo', 'gb'], dimsPadrao: ['loja', 'modelo'] });
   add('leg_dashgeral', 'Legado', 'Dashboard geral', (el, st) => {
     const vs = REL.vendas(st); const dia = {}; const mes = {};
-    vs.forEach(v => { dia[v.data.slice(0, 10)] = (dia[v.data.slice(0, 10)] || 0) + 1; mes[v.data.slice(0, 7)] = (mes[v.data.slice(0, 7)] || 0) + v.total; });
+    vs.forEach(v => { dia[UI.dia(v.data)] = (dia[UI.dia(v.data)] || 0) + 1; mes[UI.dia(v.data).slice(0, 7)] = (mes[UI.dia(v.data).slice(0, 7)] || 0) + v.total; });
     el.innerHTML = kpis([{ l: 'Venda total', v: UI.money(vs.reduce((s, v) => s + v.total, 0)), c: 'accent' }, { l: 'Quantidade de vendas', v: vs.length }, { l: 'Total em estoque', v: UI.int(DB.list('produtos').filter(p => p.tipo !== 'Serviço').reduce((s, p) => s + Math.max(0, p.quantidade), 0)) }]) +
       `<section class="card"><h2>Quantidade de vendas por dia</h2>${UI.barChart(Object.keys(dia).sort().map(k => ({ l: k.slice(8), v: dia[k] })), { fmt: UI.int })}</section><section class="card"><h2>Total de vendas por mês</h2>${UI.barChart(Object.keys(mes).sort().map(k => ({ l: UI.monthLabel(k), v: mes[k] })))}</section>`;
   }, { st: { de: UI.addMonths(UI.today().slice(0, 8) + '01', -5) } });

@@ -12,18 +12,20 @@
     pct(v) { return num(v).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + '%'; },
     today() { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); },
     nowLocal() { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); },
-    addDays(iso, n) { const d = new Date(iso.slice(0, 10) + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); },
+    addDays(iso, n) { const d = new Date(UI.dia(iso) + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); },
     addMonths(iso, n) {
-      const d = new Date(iso.slice(0, 10) + 'T12:00:00'); const day = d.getDate();
+      const d = new Date(UI.dia(iso) + 'T12:00:00'); const day = d.getDate();
       d.setDate(1); d.setMonth(d.getMonth() + n);
       const last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
       d.setDate(Math.min(day, last));
       return d.toISOString().slice(0, 10);
     },
-    date(v) { if (!v) return ''; const s = String(v); const [y, m, d] = s.slice(0, 10).split('-'); return d ? `${d}/${m}/${y}` : s; },
+    date(v) { if (!v) return ''; const s = String(v); const [y, m, d] = UI.dia(s).split('-'); return d ? `${d}/${m}/${y}` : s; },
     datetime(v) { if (!v) return ''; const d = new Date(v); return isNaN(d) ? UI.date(v) : d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); },
-    daysBetween(a, b) { return Math.round((new Date(b.slice(0, 10)) - new Date(a.slice(0, 10))) / 86400000); },
-    monthKey(v) { return String(v || '').slice(0, 7); },
+    daysBetween(a, b) { return Math.round((new Date(UI.dia(b)) - new Date(UI.dia(a))) / 86400000); },
+    /* data (AAAA-MM-DD) no fuso local; aceita data pura ou data/hora ISO com fuso (ex.: 2026-10-14T23:30:00.000Z) */
+    dia(v) { if (!v) return ''; const s = String(v); if (s.length <= 10 || !/(Z|[+-]\d\d:?\d\d)$/i.test(s)) return s.slice(0, 10); const d = new Date(s); return isNaN(d) ? s.slice(0, 10) : new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); },
+    monthKey(v) { return UI.dia(v).slice(0, 7); },
     monthLabel(k) { const [y, m] = k.split('-'); return ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'][Number(m) - 1] + '/' + y; },
     onlyDigits(s) { return String(s || '').replace(/\D/g, ''); },
 

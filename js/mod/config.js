@@ -42,7 +42,9 @@
     { k: 'catalogo_titulo', label: 'Título do catálogo', w: 2 }, { k: 'catalogo_whats', label: 'WhatsApp para pedidos', help: 'Vazio = telefone da loja' }, B('catalogo_ativo', 'Catálogo ativo?')
   ]);
   pagina('/config/documentos', 'Modelos de documentos', 'Configurações', [
+    { k: 'recibo_prefixo', label: 'Prefixo do número do recibo', ph: 'Ex.: GL', help: 'O número do recibo é o número da venda com 10 dígitos. Ex.: GL0000000123' },
     { k: 'recibo_rodape', label: 'Rodapé do recibo de venda', w: 4 }, { k: 'cabecalho_docs', label: 'Linha extra no cabeçalho', w: 4 },
+    { type: 'html', w: 4, html: () => '<p class="small muted">O logotipo e os dados da empresa que saem no recibo ficam em <a href="#/c/unidades">Empresas / lojas</a>. Para locação, marque "É locação?" no <a href="#/c/tiposvenda">tipo de venda</a>.</p>' },
     { type: 'html', w: 4, html: () => '<p class="small muted">Os textos de garantia, termo de compra e termos de OS ficam em <a href="#/c/termos">Termos</a>. Mensagens de WhatsApp em <a href="#/c/whatsmodelos">Modelos de WhatsApp</a>.</p>' }
   ]);
   App.route('/config/dre', el => {

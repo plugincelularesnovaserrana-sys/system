@@ -23,6 +23,14 @@ Nomes e dados são genéricos: troque em **Configurações → Parâmetros gerai
 - O ícone ao lado do nome do sistema **recolhe o menu lateral** para ganhar espaço.
 - Ícones (Lucide, licença ISC) e fontes (Figtree e Sora, licença OFL) ficam dentro da pasta `assets`, então o sistema funciona mesmo sem internet.
 
+## Recibos e locação
+
+- Recibos **A4** e **bobina 80mm** no padrão de loja de celular: canhoto de recebimento, cabeçalho com logotipo, destinatário, produtos, pagamento, parcelas e termos.
+- **Logotipo e dados da empresa**: Configurações → Empresas / lojas. **Prefixo do número do recibo**: Configurações → Modelos de documentos.
+- **Locação**: no PDV escolha o tipo de venda **Locação**. O pedido é o mesmo da venda (estoque e financeiro iguais), mas o recibo sai como **Pedido de locação**, com o **prazo da locação** (da data da locação até o vencimento da última parcela), o quadro de parcelas, o **contrato de locação** e as assinaturas (locadora, locatário e duas testemunhas).
+- O texto do contrato fica em Vendas → Configurações → **Termos** (tipo "Termo de locação") e aceita variáveis como {cliente}, {imei}, {inicio}, {fim}, {prazo}, {parcelas}, {valor_parcela} e {recibo}. Revise o texto com seu advogado antes de usar.
+- Qualquer tipo de venda pode virar locação marcando "É locação?" em Vendas → Configurações → Tipos de venda.
+
 ## Onde ficam os dados (importante)
 
 Nesta versão **os dados ficam guardados no navegador de cada aparelho** (localStorage).
@@ -71,7 +79,7 @@ js/mod/*.js             módulos: início, vendas, upgrade, estoque, os, finance
 | Ordem de serviço | OS com aparelhos, serviços, peças, checklist, pagamentos, anexos e assinatura; kanban; dashboard; impressão A4/80mm; WhatsApp por situação |
 | Financeiro | Despesas e receitas com baixa, multa/juros, carnê, recibo, cobrança; fixos; caixas com sangria/suprimento e fechamento às cegas; bancos; conciliação OFX; calendário |
 | Fiscal | Registro de NF-e/NFC-e, NF de entrada de upgrade, importação de XML de fornecedor para o estoque, cadastros fiscais |
-| Relatórios | Mais de 60: DRE, financeiro mensal, formas de pagamento, produtos vendidos (agrupamento livre), estoque, vendedores e comissão, metas, OS, clientes, recap anual, legado |
+| Relatórios | Mais de 60: **DRE regime de caixa** (pela data do pagamento/recebimento ou da compensação, com comparação, visão mês a mês, detalhamento e conferência automática), DRE gerencial por competência, financeiro mensal, formas de pagamento, produtos vendidos (agrupamento livre), estoque, vendedores e comissão, metas, OS, clientes, recap anual, legado |
 | Ferramentas | Assinatura na tela, arquivos, consulta de score (registro), central de alertas, catálogo online com WhatsApp, preços de fornecedores, NPS |
 | Marketplace | Loja de apps, webhooks, tokens de API, logs |
 | Configurações | Parâmetros de cada módulo, empresas/lojas, usuários, perfis e permissões, senha mestre, auditoria, logs de acesso, backup, manual |

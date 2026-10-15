@@ -48,6 +48,8 @@
           return `<input id="${id}" name="${f.k}" type="number" step="${f.step || (f.type === 'number' ? 'any' : '0.01')}" inputmode="decimal" value="${val === '' ? '' : esc(val)}" data-type="num"${req}${ro}${ph}>`;
         case 'date': return `<input id="${id}" name="${f.k}" type="date" value="${esc(String(val).slice(0, 10))}"${req}${ro}>`;
         case 'datetime': return `<input id="${id}" name="${f.k}" type="datetime-local" value="${esc(String(val).slice(0, 16))}"${req}${ro}>`;
+        case 'image': return `<div class="img-fld" data-img="${f.k}"><input type="hidden" name="${f.k}" value="${esc(val)}"><div class="img-prev">${val ? `<img src="${esc(val)}" alt="">` : '<span class="small muted">Sem imagem</span>'}</div>
+          <label class="btn ghost sm">Escolher imagem<input type="file" accept="image/*" data-img-file hidden></label><button type="button" class="btn ghost sm" data-img-clear>Remover</button></div>`;
         case 'color': return `<input id="${id}" name="${f.k}" type="color" value="${esc(val || '#2f5bea')}"${ro}>`;
         case 'password': return `<input id="${id}" name="${f.k}" type="password" value="${esc(val)}"${req}${ro} autocomplete="new-password">`;
         case 'multi': {
@@ -168,8 +170,8 @@
       const v = st.f[flt.k];
       if (v == null || v === '') return;
       if (flt.type === 'daterange') {
-        if (v.de) rows = rows.filter(r => String(flt.get ? flt.get(r) : r[flt.k] || '').slice(0, 10) >= v.de);
-        if (v.ate) rows = rows.filter(r => String(flt.get ? flt.get(r) : r[flt.k] || '').slice(0, 10) <= v.ate);
+        if (v.de) rows = rows.filter(r => UI.dia(flt.get ? flt.get(r) : r[flt.k] || '') >= v.de);
+        if (v.ate) rows = rows.filter(r => UI.dia(flt.get ? flt.get(r) : r[flt.k] || '') <= v.ate);
       } else if (flt.test) rows = rows.filter(r => flt.test(r, v));
       else rows = rows.filter(r => String(flt.get ? flt.get(r) : r[flt.k]) === String(v));
     });
@@ -287,10 +289,12 @@
     if (act === 'edit') { location.hash = `#/c/${key}/${rec.id}`; return; }
     if (act === 'restore') { DB.restore(sc.col, rec.id); UI.toast('Registro restaurado'); rerender(); return; }
     if (act === 'del') {
+      const bloqueio = sc.deleteBlock && sc.deleteBlock(rec);
+      if (bloqueio) { UI.toast(bloqueio, 'aviso'); return; }
       if (!(await UI.master('excluir'))) return;
       const motivo = DB.cfg().pedir_motivo_exclusao ? await UI.prompt('Motivo da exclusão', { label: 'Descreva o motivo' }) : '';
       if (motivo === null) return;
-      if (!(await UI.confirm('Excluir este registro? Ele pode ser restaurado em "Ver registros excluídos".', { ok: 'Excluir', danger: true }))) return;
+      if (!(await UI.confirm((sc.deleteMsg && sc.deleteMsg(rec)) || 'Excluir este registro? Ele pode ser restaurado em "Ver registros excluídos".', { ok: 'Excluir', danger: true }))) return;
       if (sc.onDelete && sc.onDelete(rec) === false) return;
       DB.remove(sc.col, rec.id, motivo); UI.toast('Registro excluído'); rerender(); return;
     }
@@ -384,3 +388,23 @@
     setFilter(key, f) { listState[key] = Object.assign(listState[key] || { q: '', f: {}, page: 1, per: 50, sort: null, dir: 1, deleted: false }, { f }); }
   };
 })();
+
+/* campo de imagem (ex.: logotipo): reduz a imagem e guarda como texto no próprio cadastro */
+document.addEventListener('change', async e => {
+  const inp = e.target.closest('[data-img-file]'); if (!inp || !inp.files[0]) return;
+  const box = inp.closest('[data-img]'); const file = inp.files[0];
+  if (file.size > 3 * 1024 * 1024) { UI.toast('Imagem muito grande (máx. 3 MB)', 'erro'); return; }
+  const url = await UI.readDataURL(file);
+  const img = new Image(); img.src = url; await new Promise(r => { img.onload = r; img.onerror = r; });
+  const max = 360, k = Math.min(1, max / Math.max(img.width || 1, img.height || 1));
+  const c = document.createElement('canvas'); c.width = Math.round((img.width || 1) * k); c.height = Math.round((img.height || 1) * k);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  const out = file.type === 'image/png' || file.type === 'image/svg+xml' ? c.toDataURL('image/png') : c.toDataURL('image/jpeg', 0.88);
+  box.querySelector('input[type=hidden]').value = out;
+  box.querySelector('.img-prev').innerHTML = `<img src="${out}" alt="">`;
+});
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-img-clear]'); if (!b) return;
+  const box = b.closest('[data-img]'); box.querySelector('input[type=hidden]').value = ''; box.querySelector('.img-prev').innerHTML = '<span class="small muted">Sem imagem</span>';
+});
+

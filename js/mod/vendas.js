@@ -275,8 +275,11 @@
       const inp = e.target.closest('[data-f]'); if (!inp) return;
       const it = v.itens[inp.closest('tr').dataset.i];
       it[inp.dataset.f] = Number(inp.value) || 0;
-      if (inp.dataset.f === 'qtd' && it.qtd < 1) it.qtd = 1;
-      renderItens();
+      if (inp.dataset.f === 'qtd' && it.qtd < 1) { it.qtd = 1; inp.value = 1; }
+      // atualiza só o subtotal da linha e os totais: recriar a tabela aqui fazia o clique na lixeira se perder
+      const sub = inp.closest('tr').querySelector('td:nth-last-child(2) b');
+      if (sub) sub.textContent = UI.money(it.preco * it.qtd - (it.desconto || 0) + (it.seguro_valor || 0));
+      renderTotais();
     });
     tbItens.addEventListener('click', e => { if (e.target.closest('[data-rm]')) { v.itens.splice(e.target.closest('tr').dataset.i, 1); renderItens(); } });
 
@@ -604,7 +607,7 @@
         let resultado = '';
         if (res === 'dinheiro') {
           const fid = Number(body.querySelector('[data-forma]').value);
-          const cat = (DB.list('categoriasfin').find(c => c.nome === 'Outras despesas') || {}).id;
+          const cat = NEG.categoria('devolucao', 'Devoluções e estornos', 'Despesa', 'Devoluções');
           const d = NEG.lancar({ tipo: 'D', titulo: `Devolução venda #${v.id}`, pessoa_id: v.cliente_id, valor, vencimento: UI.today(), categoria_id: cat, origem: 'Devolução', origem_id: v.id });
           NEG.baixar(d.id, { forma_id: fid, valor, data: UI.today() });
           resultado = 'Dinheiro devolvido';

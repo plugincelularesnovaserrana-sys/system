@@ -56,12 +56,15 @@
       if (rec.ja_pago) { const f = rec.forma_id || (DB.list('formaspag').find(x => x.tipo === 'Dinheiro') || {}).id; NEG.baixar(rec.id, { forma_id: f, valor: NEG.aPagar(DB.get('financeiro', rec.id)), data: rec.vencimento }); }
     },
     afterSaveGo: () => '#/c/' + key,
+    deleteBlock: r => ({ Venda: `Este lançamento foi gerado pela venda #${r.origem_id}. Para desfazer, cancele a venda ou faça a devolução em Vendas.`, OS: `Este lançamento foi gerado pela OS #${r.origem_id}. Para desfazer, altere os pagamentos ou cancele a OS.` })[r.origem] || '',
+    deleteMsg: r => r.pago > 0 ? `Este lançamento tem ${UI.money(r.pago)} pagos. Ao excluir, os pagamentos serão estornados do caixa/banco. Ele pode ser restaurado em "Ver registros excluídos" (sem os pagamentos).` : '',
+    onDelete: r => { if (r.pago > 0) NEG.estornarPagamentos(r, 'Exclusão'); },
     actions: [
       { label: tipo === 'R' ? 'Receber' : 'Pagar', show: r => !['Pago', 'Cancelado'].includes(r.situacao), fn: (r, re) => FIN.baixa(r, re) },
       { label: 'Recibo', show: r => r.pago > 0, fn: r => FIN.recibo(r) },
       { label: 'Cobrar por WhatsApp', show: r => tipo === 'R' && !['Pago', 'Cancelado'].includes(r.situacao), fn: r => FIN.cobrar(r) },
       { label: 'Duplicar lançamento', fn: (r, re) => { NEG.lancar(Object.assign({}, r, { id: undefined, created_at: undefined, pagamentos: [], pago: 0, situacao: 'Em aberto', titulo: r.titulo + ' (cópia)' })); re(); } },
-      { label: 'Estornar pagamentos', show: r => r.pago > 0, fn: async (r, re) => { if (!(await UI.confirm('Estornar todos os pagamentos deste lançamento?'))) return; (r.pagamentos || []).forEach(p => { if (NEG.forma(p.forma_id).banco_id) NEG.movBanco(NEG.forma(p.forma_id).banco_id, r.tipo === 'R' ? -(p.liquido || p.valor) : p.valor, 'Estorno: ' + r.titulo); if (p.caixa_id && NEG.caixaAberto()) NEG.caixaMov(r.tipo === 'R' ? 'Saída' : 'Entrada', p.valor, p.forma_id, 'Estorno: ' + r.titulo, 'Financeiro', r.id); }); DB.update('financeiro', r.id, { pagamentos: [], pago: 0, situacao: 'Em aberto' }); re(); } },
+      { label: 'Estornar pagamentos', show: r => r.pago > 0, fn: async (r, re) => { if (!(await UI.confirm('Estornar todos os pagamentos deste lançamento? O valor sai do caixa/banco e o lançamento volta a ficar em aberto.'))) return; NEG.estornarPagamentos(r); UI.toast('Pagamentos estornados'); re(); } },
       { label: 'Cancelar lançamento', show: r => r.situacao !== 'Cancelado' && !r.pago, fn: async (r, re) => { if (await UI.confirm('Cancelar este lançamento?')) { DB.update('financeiro', r.id, { situacao: 'Cancelado' }); re(); } } }
     ],
     tools: [
@@ -306,7 +309,7 @@ Aluguel;2026-11-05;2500,00;Aluguel;Imobiliária</pre><p class="small muted">Data
   App.route('/fin/calendario', (el, p, qs) => {
     const mes = qs.get('m') || UI.today().slice(0, 7);
     const [y, m] = mes.split('-').map(Number);
-    const first = new Date(y, m - 1, 1); const start = new Date(first); start.setDate(1 - first.getDay());
+    const first = new Date(y, m - 1, 1, 12); const start = new Date(first); start.setDate(1 - first.getDay());
     const fins = DB.list('financeiro').filter(f => f.situacao !== 'Cancelado');
     const days = Array.from({ length: 42 }, (_, i) => { const d = new Date(start); d.setDate(start.getDate() + i); return d.toISOString().slice(0, 10); });
     const prev = UI.addMonths(mes + '-01', -1).slice(0, 7), next = UI.addMonths(mes + '-01', 1).slice(0, 7);

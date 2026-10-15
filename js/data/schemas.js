@@ -76,7 +76,10 @@
 
   /* ---------------- VENDAS: cadastros ---------------- */
   simple('tagspessoa', 'Tags de clientes', 'Vendas > Configurações', [T('cor', 'Cor', { type: 'color' })], [T('cor', 'Cor', { color: true })]);
-  simple('tiposvenda', 'Tipos de venda (funil)', 'Vendas > Configurações', [T('ordem', 'Ordem no funil', { type: 'number' })], [T('ordem', 'Ordem')], { single: 'Tipo de venda' });
+  simple('tiposvenda', 'Tipos de venda (funil)', 'Vendas > Configurações', [T('ordem', 'Ordem no funil', { type: 'number' }),
+    T('locacao', 'É locação?', { type: 'bool', help: 'O pedido é o mesmo da venda, mas o recibo sai como "Pedido de locação", com prazo e termo de locação.' }),
+    R('termo_locacao_id', 'Termo de locação', { col: 'termos', filter: t => t.tipo === 'Termo de locação' }, { help: 'Vazio = primeiro termo do tipo "Termo de locação".' })],
+    [T('ordem', 'Ordem'), T('locacao', 'Locação', { get: r => r.locacao ? 'Sim' : '' })], { single: 'Tipo de venda' });
   simple('canais', 'Canais de venda', 'Vendas > Configurações', [], [], { single: 'Canal de venda' });
   simple('tiposentrega', 'Tipos de entrega', 'Vendas > Configurações', [T('valor', 'Valor padrão (R$)', { type: 'money' })], [T('valor', 'Valor', { fmt: 'money' })], { single: 'Tipo de entrega' });
   reg('vendedores', {
@@ -89,8 +92,8 @@
   });
   reg('termos', {
     col: 'termos', title: 'Termos de garantia, compra, entrada e saída', single: 'Termo', crumb: 'Vendas > Configurações',
-    fields: [T('tipo', 'Tipo', { req: true, opts: ['Garantia de venda', 'Termo de compra', 'Entrada de OS', 'Saída de OS'] }), T('nome', 'Nome do termo', { req: true, w: 2 }),
-      T('dias', 'Dias de garantia', { type: 'number' }), T('texto', 'Texto do termo', { type: 'textarea', rows: 10, w: 4, help: 'Variáveis: {cliente} {cpf} {produto} {imei} {dias} {data} {loja}' })],
+    fields: [T('tipo', 'Tipo', { req: true, opts: ['Garantia de venda', 'Termo de compra', 'Termo de locação', 'Entrada de OS', 'Saída de OS'] }), T('nome', 'Nome do termo', { req: true, w: 2 }),
+      T('dias', 'Dias de garantia', { type: 'number' }), T('texto', 'Texto do termo', { type: 'textarea', rows: 10, w: 4, help: 'Variáveis: {cliente} {cpf} {endereco} {produto} {imei} {dias} {data} {loja} {cnpj_loja} {endereco_loja} {cidade_loja} {recibo} {total}. Locação: {inicio} {fim} {prazo} {parcelas} {valor_parcela} {entrada} {primeiro_venc}. Formatação: linha com "# " = título, "## " = seção, "- " = item de lista, **negrito**.' })],
     cols: [T('id', 'Id'), T('tipo', 'Tipo'), T('nome', 'Nome do termo'), T('dias', 'Dias')],
     actions: [{ label: 'Imprimir', fn: r => UI.print(UI.docHeader(r.nome) + `<div style="white-space:pre-wrap">${esc(r.texto)}</div>`) },
       { label: 'Duplicar', fn: (r, re) => { const c = Object.assign({}, r); delete c.id; c.nome += ' (cópia)'; DB.insert('termos', c); re(); } }]
@@ -151,8 +154,16 @@
     col: 'creditos', title: 'Histórico de movimentação de crédito', single: 'Crédito', crumb: 'Vendas', newLabel: 'Lançar crédito',
     fields: [R('pessoa_id', 'Cliente', { col: 'pessoas', filter: r => r.cliente }, { req: true, w: 2 }), T('valor', 'Valor (R$) — negativo para debitar', { type: 'money', req: true }),
       T('motivo', 'Motivo', { opts: ['Pagamento antecipado', 'Devolução', 'Bonificação', 'Ajuste', 'Uso em venda', 'Outros'], req: true }), T('validade', 'Validade', { type: 'date' }),
-      T('status', 'Status', { opts: ['Ativo', 'Cancelado'], def: 'Ativo' }), T('obs', 'Observação', { type: 'textarea', w: 4 })],
+      T('status', 'Status', { opts: ['Ativo', 'Cancelado'], def: 'Ativo' }),
+      R('forma_receb_id', 'Dinheiro recebido por', { col: 'formaspag', filter: f => !['Crédito do cliente', 'Aparelho na troca', 'Crediário', 'Boleto'].includes(f.tipo) }, { help: 'Preencha quando o cliente pagou adiantado: gera a entrada no caixa e no financeiro. Deixe vazio para bonificação ou ajuste.', hidden: d => !!d.id }),
+      T('obs', 'Observação', { type: 'textarea', w: 4 })],
     beforeSave: d => { d.tipo = d.valor >= 0 ? 'Entrada' : 'Saída'; d.origem = d.origem || 'manual'; d.data = d.data || new Date().toISOString(); },
+    afterSave: (r, isNew) => {
+      if (!isNew || !r.forma_receb_id || !(r.valor > 0)) return;
+      const cat = NEG.categoria('adiantamento', 'Adiantamentos de clientes', 'Receita', 'Adiantamentos de clientes');
+      const f = NEG.lancar({ tipo: 'R', titulo: `Adiantamento de cliente (crédito #${r.id})`, pessoa_id: r.pessoa_id, valor: r.valor, vencimento: UI.today(), categoria_id: cat, origem: 'Crédito', origem_id: r.id });
+      NEG.baixar(f.id, { forma_id: r.forma_receb_id, valor: r.valor, data: UI.today(), taxa: NEG.taxa(r.forma_receb_id, 1, r.valor) });
+    },
     cols: [T('id', 'Id'), T('pessoa_id', 'Cliente', { get: r => pessoaNome(r.pessoa_id) }), T('created_by', 'Alterado por'), T('origem', 'Origem'), T('origem_id', 'Id origem'), T('tipo', 'Tipo'),
       T('motivo', 'Motivo'), T('validade', 'Validade', { fmt: 'date' }), { label: 'Saldo do cliente', get: r => UI.money(NEG.saldoCredito(r.pessoa_id)) }, T('status', 'Status'), T('created_at', 'Data', { fmt: 'datetime' }),
       T('valor', 'Valor', { fmt: 'money', html: r => `<span class="${r.valor < 0 ? 'neg' : 'pos'}">${UI.money(r.valor)}</span>` })],
@@ -226,7 +237,7 @@
   reg('categoriasfin', {
     col: 'categoriasfin', title: 'Categorias financeiras', single: 'Categoria', crumb: 'Financeiro > Configurações', saveNew: true,
     fields: [T('nome', 'Nome', { req: true, w: 2 }), T('tipo', 'Tipo', { opts: ['Receita', 'Despesa'], req: true }), R('pai_id', 'Categoria pai', 'categoriasfin'),
-      R('plano_id', 'Plano de contas', 'planocontas'), T('dre', 'Grupo no DRE', { opts: ['Receita de vendas', 'Receita de OS', 'Outras receitas', 'Custo de mercadoria (CMV)', 'Custo de OS', 'Taxas', 'Despesa operacional', 'Despesa com pessoal', 'Impostos', 'Perdas e ajustes', 'Investimentos', 'Não considerar'] })],
+      R('plano_id', 'Plano de contas', 'planocontas'), T('dre', 'Grupo no DRE', { opts: ['Receita de vendas', 'Receita de OS', 'Outras receitas', 'Custo de mercadoria (CMV)', 'Custo de OS', 'Taxas', 'Despesa operacional', 'Despesa com pessoal', 'Impostos', 'Perdas e ajustes', 'Investimentos', 'Devoluções', 'Adiantamentos de clientes', 'Não considerar'] })],
     cols: [T('id', 'Id'), { label: 'Nome', get: r => (r.pai_id ? ((DB.get('categoriasfin', r.pai_id) || {}).nome + ' › ') : '') + r.nome }, T('tipo', 'Tipo'), T('plano_id', 'Plano de contas'), T('dre', 'Grupo DRE')]
   });
   reg('planocontas', {
@@ -260,7 +271,7 @@
   /* ---------------- FISCAL: cadastros ---------------- */
   reg('unidades', {
     col: 'unidades', title: 'Empresas / lojas e dados fiscais', single: 'Empresa / loja', crumb: 'Configurações', perm: 'config',
-    fields: [T('nome', 'Nome da empresa', { req: true, w: 2, tab: 'Informações gerais' }), T('apelido', 'Apelido', { tab: 'Informações gerais' }), T('cnpj', 'CPF/CNPJ', { tab: 'Informações gerais' }),
+    fields: [T('nome', 'Nome da empresa', { req: true, w: 2, tab: 'Informações gerais' }), T('apelido', 'Apelido', { tab: 'Informações gerais' }), T('logo', 'Logotipo (aparece nos recibos)', { type: 'image', w: 4, tab: 'Informações gerais' }), T('cnpj', 'CPF/CNPJ', { tab: 'Informações gerais' }),
       T('ie', 'Insc. estadual', { tab: 'Informações gerais' }), T('im', 'Insc. municipal', { tab: 'Informações gerais' }), T('email', 'E-mail', { tab: 'Contatos' }), T('telefone', 'Telefone / WhatsApp', { tab: 'Contatos' }),
       T('instagram', 'Instagram', { tab: 'Contatos' }), T('endereco', 'Endereço completo', { tab: 'Contatos', w: 3 }), T('cidade', 'Cidade', { tab: 'Contatos' }), T('uf', 'UF', { opts: ESTADOS_UF, tab: 'Contatos' }),
       T('regime', 'Regime tributário', { opts: ['Simples Nacional', 'Simples - excesso de sublimite', 'Regime normal', 'MEI'], tab: 'Fiscal' }), T('cert_validade', 'Validade do certificado', { type: 'date', tab: 'Fiscal' }),

@@ -52,7 +52,11 @@
         { nome: 'Salários e comissões', tipo: 'Despesa', plano_id: plano[2].id, dre: 'Despesa com pessoal' },
         { nome: 'Impostos', tipo: 'Despesa', plano_id: plano[2].id, dre: 'Impostos' },
         { nome: 'Marketing', tipo: 'Despesa', plano_id: plano[2].id, dre: 'Despesa operacional' },
-        { nome: 'Outras despesas', tipo: 'Despesa', plano_id: plano[2].id, dre: 'Despesa operacional' }
+        { nome: 'Outras despesas', tipo: 'Despesa', plano_id: plano[2].id, dre: 'Despesa operacional' },
+        { nome: 'Devoluções e estornos', tipo: 'Despesa', plano_id: plano[0].id, dre: 'Devoluções', sistema: 'devolucao' },
+        { nome: 'Adiantamentos de clientes', tipo: 'Receita', plano_id: plano[0].id, dre: 'Adiantamentos de clientes', sistema: 'adiantamento' },
+        { nome: 'Pró-labore', tipo: 'Despesa', plano_id: plano[2].id, dre: 'Despesa com pessoal' },
+        { nome: 'Investimentos e equipamentos', tipo: 'Despesa', plano_id: plano[2].id, dre: 'Investimentos' }
       ]);
       const bancos = ins('bancos', [{ nome: 'Conta principal', saldo_inicial: 0, data_inicial: UI.today(), ativo: true, saldo: 0, movs: [] }]);
       ins('formaspag', [

@@ -110,7 +110,7 @@
         <td class="r"><input class="inline-inp" type="number" step="0.01" data-f="taxa" value="${s.taxa || 0}"${travado ? ' disabled' : ''}></td><td class="r">${UI.money((s.valor || 0) - (s.desconto || 0))}</td><td>${travado ? '' : '<button type="button" class="icon-btn" data-rm>×</button>'}</td></tr>`).join('') || '<tr><td colspan="7" class="empty">Nenhum serviço</td></tr>';
       renderTot();
     };
-    $('[data-srv]').addEventListener('change', e => { const f = e.target.dataset.f; if (f) { o.servicos[e.target.closest('tr').dataset.i][f] = Number(e.target.value) || 0; renderSrv(); } });
+    $('[data-srv]').addEventListener('change', e => { const f = e.target.dataset.f; if (!f) return; const tr = e.target.closest('tr'); const s = o.servicos[tr.dataset.i]; s[f] = Number(e.target.value) || 0; tr.querySelector('td:nth-last-child(2)').textContent = UI.money((s.valor || 0) - (s.desconto || 0)); renderTot(); });
     $('[data-srv]').addEventListener('click', e => { if (e.target.closest('[data-rm]')) { o.servicos.splice(e.target.closest('tr').dataset.i, 1); renderSrv(); } });
     $('[data-add-srv]').onclick = () => { const s = DB.get('servicos', $('[name=add_srv]').value); if (!s) return; o.servicos.push({ servico_id: s.id, descricao: s.nome, custo: s.custo || 0, valor: s.valor || 0, desconto: 0, taxa: 0, garantia_dias: s.garantia_dias }); renderSrv(); };
     $('[data-add-srv-livre]').onclick = async () => { const d = await UI.prompt('Serviço avulso', { label: 'Descrição' }); if (d) { o.servicos.push({ descricao: d, custo: 0, valor: 0, desconto: 0, taxa: 0 }); renderSrv(); } };
@@ -121,7 +121,7 @@
         ${showCost ? `<td class="r">${UI.money(p.custo)}</td>` : ''}<td class="r"><input class="inline-inp" type="number" step="0.01" data-f="valor" value="${p.valor || 0}"${travado ? ' disabled' : ''}></td><td class="r">${UI.money((p.valor || 0) * (p.qtd || 1))}</td><td>${travado ? '' : '<button type="button" class="icon-btn" data-rm>×</button>'}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">Nenhuma peça</td></tr>';
       renderTot();
     };
-    $('[data-pc]').addEventListener('change', e => { const f = e.target.dataset.f; if (f) { o.pecas[e.target.closest('tr').dataset.i][f] = Number(e.target.value) || 0; renderPc(); } });
+    $('[data-pc]').addEventListener('change', e => { const f = e.target.dataset.f; if (!f) return; const tr = e.target.closest('tr'); const p = o.pecas[tr.dataset.i]; p[f] = Number(e.target.value) || 0; if (f === 'qtd' && p.qtd < 1) { p.qtd = 1; e.target.value = 1; } tr.querySelector('td:nth-last-child(2)').textContent = UI.money((p.valor || 0) * (p.qtd || 1)); renderTot(); });
     $('[data-pc]').addEventListener('click', e => { if (e.target.closest('[data-rm]')) { o.pecas.splice(e.target.closest('tr').dataset.i, 1); renderPc(); } });
     $('[data-add-peca]').onclick = () => {
       const p = DB.get('produtos', $('[name=add_peca]').value); if (!p) return;
@@ -279,8 +279,8 @@
     const all = DB.list('os');
     const hoje = UI.today(), amanha = UI.addDays(hoje, 1);
     const abertas = all.filter(o => !['Finalizada', 'Cancelada'].includes(sit(o.situacao_id).finalidade));
-    const per = all.filter(o => String(o.created_at).slice(0, 10) >= st.de && String(o.created_at).slice(0, 10) <= st.ate);
-    const fin = all.filter(o => sit(o.situacao_id).finalidade === 'Finalizada' && String(o.data_finalizacao || '').slice(0, 10) >= st.de && String(o.data_finalizacao || '').slice(0, 10) <= st.ate);
+    const per = all.filter(o => UI.dia(o.created_at) >= st.de && UI.dia(o.created_at) <= st.ate);
+    const fin = all.filter(o => sit(o.situacao_id).finalidade === 'Finalizada' && UI.dia(o.data_finalizacao) >= st.de && UI.dia(o.data_finalizacao) <= st.ate);
     const tot = fin.reduce((a, o) => { const t = NEG.totaisOS(o); a.f += t.total; a.l += t.lucro; a.c += t.custo; return a; }, { f: 0, l: 0, c: 0 });
     const porSit = DB.list('situacoesos').map(s => ({ l: s.nome, v: all.filter(o => o.situacao_id === s.id && (abertas.includes(o) || per.includes(o))).length })).filter(x => x.v);
     const porTec = {}; fin.forEach(o => { const k = nome('pessoas', o.tecnico_id) || 'Sem técnico'; porTec[k] = (porTec[k] || 0) + NEG.totaisOS(o).total; });

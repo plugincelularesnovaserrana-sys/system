@@ -283,14 +283,14 @@ Aparelho;iPhone 13 128GB Preto;350000000000099;2100;2799;1;;Smartphones</pre><p 
         <td class="r">${ro ? UI.money(i.custo) : `<input class="inline-inp" type="number" step="0.01" data-f="custo" value="${i.custo}">`}</td>
         <td class="r">${ro ? UI.money(i.preco) : `<input class="inline-inp" type="number" step="0.01" data-f="preco" value="${i.preco || 0}">`}</td>
         <td class="r">${UI.money(i.custo * i.qtd)}</td><td>${ro ? '' : '<button class="icon-btn" data-rm aria-label="Remover">×</button>'}</td></tr>`).join('') || '<tr><td colspan="8" class="empty">Sem itens</td></tr>';
-      oc.total = r2(oc.itens.reduce((s, i) => s + i.custo * i.qtd, 0) + (Number($('[name=frete]').value) || 0));
-      $('[data-tot]').textContent = UI.money(oc.total);
+      totOC();
     };
+    const totOC = () => { oc.total = r2(oc.itens.reduce((s, i) => s + i.custo * i.qtd, 0) + (Number($('[name=frete]').value) || 0)); $('[data-tot]').textContent = UI.money(oc.total); };
     render();
     if (ro) { el.querySelectorAll('input,select').forEach(i => i.disabled = true); return; }
-    $('[data-it]').addEventListener('change', e => { const f = e.target.dataset.f; if (!f) return; const it = oc.itens[e.target.closest('tr').dataset.k]; it[f] = ['qtd', 'custo', 'preco'].includes(f) ? Number(e.target.value) || 0 : e.target.value; render(); });
+    $('[data-it]').addEventListener('change', e => { const f = e.target.dataset.f; if (!f) return; const tr = e.target.closest('tr'); const it = oc.itens[tr.dataset.k]; it[f] = ['qtd', 'custo', 'preco'].includes(f) ? Number(e.target.value) || 0 : e.target.value; tr.querySelector('td:nth-last-child(2)').textContent = UI.money(it.custo * it.qtd); totOC(); });
     $('[data-it]').addEventListener('click', e => { if (e.target.closest('[data-rm]')) { oc.itens.splice(e.target.closest('tr').dataset.k, 1); render(); } });
-    $('[name=frete]').addEventListener('input', render);
+    $('[name=frete]').addEventListener('input', totOC);
     $('[data-add-ex]').onclick = () => { const p = DB.get('produtos', $('[name=add_prod]').value); if (!p) return; oc.itens.push({ produto_id: p.id, descricao: NEG.descProduto(p), tipo: p.tipo, qtd: 1, custo: p.custo || 0, preco: p.preco || 0 }); render(); };
     $('[data-add-novo]').onclick = () => {
       const flds = [{ k: 'tipo', label: 'Tipo', opts: NEG.TIPOS_PRODUTO.filter(t => t !== 'Serviço'), def: 'Aparelho' }, { k: 'modelo_id', label: 'Modelo (aparelho)', ref: 'modelos' }, { k: 'gb_id', label: 'GB', ref: 'gbs' },

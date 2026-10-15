@@ -33,16 +33,16 @@
   App.route('/inicio', el => {
     const hoje = UI.today();
     st.de = st.de || hoje; st.ate = st.ate || hoje;
-    const inP = d => { const x = String(d || '').slice(0, 10); return x >= st.de && x <= st.ate; };
+    const inP = d => { const x = UI.dia(d); return x >= st.de && x <= st.ate; };
     const todas = DB.list('vendas').filter(v => v.status === 'Concluída');
     const vendas = todas.filter(v => inP(v.data));
     const fat = vendas.reduce((s, v) => s + v.total, 0), luc = vendas.reduce((s, v) => s + (v.lucro || 0), 0);
     const ini = hoje.slice(0, 8) + '01'; const dia = Number(hoje.slice(8)); const diasMes = new Date(Number(hoje.slice(0, 4)), Number(hoje.slice(5, 7)), 0).getDate();
-    const mes = todas.filter(v => v.data.slice(0, 10) >= ini);
+    const mes = todas.filter(v => UI.dia(v.data) >= ini);
     const fatMes = mes.reduce((s, v) => s + v.total, 0), lucMes = mes.reduce((s, v) => s + (v.lucro || 0), 0);
     const proj = x => x * diasMes / dia;
     const iniAnt = UI.addMonths(ini, -1);
-    const fatAnt = todas.filter(v => v.data.slice(0, 10) >= iniAnt && v.data.slice(0, 10) < ini).reduce((s, v) => s + v.total, 0);
+    const fatAnt = todas.filter(v => UI.dia(v.data) >= iniAnt && UI.dia(v.data) < ini).reduce((s, v) => s + v.total, 0);
     const metaLoja = DB.list('metas').find(m => m.tipo === 'Faturamento total da loja' && m.data_ini <= hoje && m.data_fim >= hoje);
     const alvo = metaLoja ? metaLoja.valor : (fatAnt || 0);
     const pctAlvo = alvo ? fatMes / alvo * 100 : 0;
@@ -63,7 +63,7 @@
     const totE = E.vendas + E.os + E.outras + sup, totS = S.compras + S.despesas + sang;
     const formas = {}; vendas.forEach(v => (v.pagamentos || []).forEach(p => { const k = NEG.forma(p.forma_id).nome || 'Outros'; formas[k] = (formas[k] || 0) + p.valor; }));
     const osAb = DB.list('os').filter(o => !['Finalizada', 'Cancelada'].includes((DB.get('situacoesos', o.situacao_id) || {}).finalidade));
-    const porDia = {}; todas.filter(v => v.data.slice(0, 10) >= UI.addDays(hoje, -13)).forEach(v => { const k = v.data.slice(0, 10); porDia[k] = (porDia[k] || 0) + v.total; });
+    const porDia = {}; todas.filter(v => UI.dia(v.data) >= UI.addDays(hoje, -13)).forEach(v => { const k = UI.dia(v.data); porDia[k] = (porDia[k] || 0) + v.total; });
     const dias14 = Array.from({ length: 14 }, (_, i) => UI.addDays(hoje, i - 13));
     const top = {}; mes.forEach(v => v.itens.filter(i => !i.devolvido).forEach(i => { top[i.descricao] = (top[i.descricao] || 0) + i.qtd; }));
     const aReceber = DB.list('financeiro').filter(f => f.tipo === 'R' && ['Em aberto', 'Parcial'].includes(f.situacao) && f.vencimento <= UI.addDays(hoje, 7)).sort((a, b) => a.vencimento.localeCompare(b.vencimento));
